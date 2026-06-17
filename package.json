@@ -1,0 +1,40 @@
+{
+  "name": "byok-anthropic-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Minimal end-to-end exercise of the host-owned secret store + §6 injectSecret: store an Anthropic key, grant it to this app, and call the Anthropic API browser-direct with the key injected by the host (the app never sees the value).",
+  "immediately.run": {
+    "requireLatest": "stale_ok",
+    "requests": {
+      "secrets:add": {},
+      "net:fetch": {
+        "hosts": [
+          {
+            "origin": "https://api.anthropic.com",
+            "paths": ["/v1/"],
+            "methods": ["POST"],
+            "injectSecret": { "family": "anthropic", "type": "api-key" }
+          }
+        ]
+      }
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@immediately-run/sdk": "^0.11.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.9"
+  }
+}
