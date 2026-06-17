@@ -1,9 +1,9 @@
 {
-  "name": "byok-anthropic-demo",
+  "name": "byok-demo",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Minimal end-to-end exercise of the host-owned secret store + §6 injectSecret: store an Anthropic key, grant it to this app, and call the Anthropic API browser-direct with the key injected by the host (the app never sees the value).",
+  "description": "Minimal end-to-end exercise of the host-owned secret store + §6 injectSecret: store an OpenRouter key, grant it to this app, and call OpenRouter browser-direct with the key injected by the host as Authorization: Bearer (the app never sees the value).",
   "immediately.run": {
     "requireLatest": "stale_ok",
     "requests": {
@@ -11,10 +11,10 @@
       "net:fetch": {
         "hosts": [
           {
-            "origin": "https://api.anthropic.com",
-            "paths": ["/v1/"],
+            "origin": "https://openrouter.ai",
+            "paths": ["/api/v1/"],
             "methods": ["POST"],
-            "injectSecret": { "family": "anthropic", "type": "api-key" }
+            "injectSecret": { "family": "openrouter", "type": "bearer-token" }
           }
         ]
       }

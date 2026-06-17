@@ -1,18 +1,20 @@
-// BYOK Anthropic demo — an end-to-end exercise of the host-owned secret store and
+// BYOK OpenRouter demo — an end-to-end exercise of the host-owned secret store and
 // the SECRETS_SPEC §6 `injectSecret` path. Three user-driven steps:
 //
 //   1. STORE   — requestAddSecret() opens the host-drawn add modal; the user types
-//                their Anthropic key into HOST chrome (this app never sees it) and
-//                it is passkey-PRF sealed. type:'api-key' defaults the injection
-//                framing to `x-api-key: <value>` — exactly Anthropic's auth header.
+//                their OpenRouter key into HOST chrome (this app never sees it) and
+//                it is passkey-PRF sealed. type:'bearer-token' frames the value as
+//                `Authorization: Bearer <value>` — OpenRouter's auth header — and is
+//                origin-bound to https://openrouter.ai (the §6 gate requires it).
 //   2. GRANT   — requestSecret() is the powerbox; the user binds the stored secret
 //                to this app, minting a durable (appKey, secretId) use grant.
-//   3. CALL    — hostFetch() to api.anthropic.com. This app sets NO auth header;
-//                the host injects `x-api-key` after the triple gate, browser-direct
-//                (no /api/v1/net-fetch proxy hop). The key never crosses into here.
+//   3. CALL    — hostFetch() to openrouter.ai. This app sets NO auth header; the
+//                host injects `Authorization: Bearer` after the triple gate,
+//                browser-direct (no /api/v1/net-fetch proxy hop). The key never
+//                crosses into here.
 //
 // The app's package.json declares `secrets:add` + a `net:fetch` host entry for
-// api.anthropic.com carrying `injectSecret: {family:'anthropic', type:'api-key'}`.
+// openrouter.ai carrying `injectSecret: {family:'openrouter', type:'bearer-token'}`.
 
 import { useState, type CSSProperties } from 'react';
 import {
@@ -24,7 +26,9 @@ import {
   type SecretError,
 } from '@immediately-run/sdk';
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// Any model your OpenRouter account can reach; gpt-4o-mini is a cheap default.
+const MODEL = 'openai/gpt-4o-mini';
 
 const errText = (e: unknown): string => {
   const se = e as Partial<SecretError> & { message?: string };
@@ -40,15 +44,15 @@ export default function App() {
 
   const say = (line: string) => setLog((l) => [...l, line]);
 
-  // 1. Ask the user to STORE an Anthropic key (typed into host chrome).
+  // 1. Ask the user to STORE an OpenRouter key (typed into host chrome).
   const onStore = async () => {
     setBusy('store');
     try {
       const view = await requestAddSecret({
-        type: 'api-key',
-        family: 'anthropic',
-        suggestedOrigin: 'https://api.anthropic.com',
-        description: 'Anthropic API key (BYOK demo)',
+        type: 'bearer-token',
+        family: 'openrouter',
+        suggestedOrigin: 'https://openrouter.ai',
+        description: 'OpenRouter API key (BYOK demo)',
       });
       setSecret(view);
       say(`stored secret ${view.id} → boundOrigin=${view.boundOrigin ?? '(none)'} (no value visible to this app)`);
@@ -63,7 +67,7 @@ export default function App() {
   const onGrant = async () => {
     setBusy('grant');
     try {
-      const g = await requestSecret({ family: 'anthropic', type: 'api-key' });
+      const g = await requestSecret({ family: 'openrouter', type: 'bearer-token' });
       setGrant(g);
       say(`granted use of ${g.secret.id} (grantId=${g.grantId}); still no value — only metadata`);
     } catch (e) {
@@ -73,21 +77,16 @@ export default function App() {
     }
   };
 
-  // 3. CALL Anthropic. No auth header set here — the host injects x-api-key.
+  // 3. CALL OpenRouter. No auth header set here — the host injects Authorization: Bearer.
   const onCall = async () => {
     setBusy('call');
     setReply(null);
     try {
-      const res = await hostFetch(ANTHROPIC_URL, {
+      const res = await hostFetch(OPENROUTER_URL, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          // Required for browser-direct calls (the injected path bypasses the proxy).
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: MODEL,
           max_tokens: 64,
           messages: [{ role: 'user', content: 'Reply with a short friendly greeting.' }],
         }),
@@ -95,8 +94,10 @@ export default function App() {
       say(`hostFetch resolved: HTTP ${res.status} ${res.statusText}`);
       if (res.status >= 200 && res.status < 300) {
         try {
-          const json = JSON.parse(res.body) as { content?: Array<{ type: string; text?: string }> };
-          const text = (json.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+          const json = JSON.parse(res.body) as {
+            choices?: Array<{ message?: { content?: string } }>;
+          };
+          const text = json.choices?.[0]?.message?.content ?? '';
           setReply(text || res.body.slice(0, 500));
         } catch {
           setReply(res.body.slice(0, 500));
@@ -124,18 +125,18 @@ export default function App() {
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.5 }}>
-      <h1 style={{ marginBottom: 4 }}>BYOK Anthropic demo</h1>
+      <h1 style={{ marginBottom: 4 }}>BYOK OpenRouter demo</h1>
       <p style={{ color: '#666', marginTop: 0 }}>
-        Stores your Anthropic key in the host, then calls Claude with the key{' '}
-        <strong>injected by the host</strong> — this app never sees its value.
+        Stores your OpenRouter key in the host, then calls it with the key{' '}
+        <strong>injected by the host</strong> as <code>Authorization: Bearer</code> — this app never sees its value.
       </p>
 
       <ol style={{ paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 16, marginTop: 28 }}>
         <li>
-          <strong>1. Store your Anthropic key</strong>
+          <strong>1. Store your OpenRouter key</strong>
           <div style={{ marginTop: 6 }}>
             <button style={btn(busy === 'store')} disabled={!!busy} onClick={onStore}>
-              {secret ? 'Stored ✓ — store another' : 'Store Anthropic key…'}
+              {secret ? 'Stored ✓ — store another' : 'Store OpenRouter key…'}
             </button>
           </div>
           {secret && (
@@ -161,10 +162,10 @@ export default function App() {
         </li>
 
         <li>
-          <strong>3. Call Claude (key injected by the host)</strong>
+          <strong>3. Call OpenRouter (key injected by the host)</strong>
           <div style={{ marginTop: 6 }}>
             <button style={btn(busy === 'call')} disabled={!!busy} onClick={onCall}>
-              Call api.anthropic.com…
+              Call openrouter.ai…
             </button>
           </div>
           {reply && (
@@ -178,8 +179,8 @@ export default function App() {
       <section style={{ marginTop: 28, background: '#fafafa', border: '1px solid #eee', borderRadius: 8, padding: '12px 16px', fontSize: 13 }}>
         <strong>Verify in DevTools → Network</strong>
         <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#555' }}>
-          <li>the request goes <strong>direct to api.anthropic.com</strong> — no <code>/api/v1/net-fetch</code> hop;</li>
-          <li>it carries an <code>x-api-key</code> header this app never set (host-injected);</li>
+          <li>the request goes <strong>direct to openrouter.ai</strong> — no <code>/api/v1/net-fetch</code> hop;</li>
+          <li>it carries an <code>authorization: Bearer …</code> header this app never set (host-injected);</li>
           <li>nothing in this app — including the log below — ever holds the key value.</li>
         </ul>
       </section>
