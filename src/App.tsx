@@ -1,27 +1,22 @@
-// BYOK OpenRouter demo — an end-to-end exercise of the host-owned secret store and
-// the SECRETS_SPEC §6 `injectSecret` path. Three user-driven steps:
+// BYOK OpenRouter demo — an end-to-end exercise of the SECRETS_SPEC §6
+// `injectSecret` path. The split the platform enforces: ADDING a key is a host
+// action (Settings → Secrets); an app only ever asks to USE one.
 //
-//   1. STORE   — requestAddSecret() opens the host-drawn add modal; the user types
-//                their OpenRouter key into HOST chrome (this app never sees it) and
-//                it is passkey-PRF sealed. type:'bearer-token' frames the value as
-//                `Authorization: Bearer <value>` — OpenRouter's auth header — and is
-//                origin-bound to https://openrouter.ai (the §6 gate requires it).
-//   2. GRANT   — requestSecret() is the powerbox; the user binds the stored secret
-//                to this app, minting a durable (appKey, secretId) use grant.
-//   3. CALL    — hostFetch() to openrouter.ai. This app sets NO auth header; the
-//                host injects `Authorization: Bearer` after the triple gate,
-//                browser-direct (no /api/v1/net-fetch proxy hop). The key never
-//                crosses into here.
+//   0. (in Settings, once) the user stores an OpenRouter key — type 'bearer-token',
+//      bound to https://openrouter.ai. The app can't do this and never sees the value.
+//   1. GRANT — requestSecret() is the powerbox; the user binds the stored secret to
+//      this app, minting a durable (appKey, secretId) use grant. Gated by net:fetch.
+//   2. CALL  — hostFetch() to openrouter.ai. This app sets NO auth header; the host
+//      injects `Authorization: Bearer` after the triple gate, browser-direct (no
+//      /api/v1/net-fetch hop). The key never crosses into here.
 //
-// The app's package.json declares `secrets:add` + a `net:fetch` host entry for
-// openrouter.ai carrying `injectSecret: {family:'openrouter', type:'bearer-token'}`.
+// Manifest declares only `net:fetch` (required) → openrouter.ai with
+// `injectSecret: {family:'openrouter', type:'bearer-token'}`.
 
 import { useState, type CSSProperties } from 'react';
 import {
-  requestAddSecret,
   requestSecret,
   hostFetch,
-  type SecretView,
   type SecretGrant,
   type SecretError,
 } from '@immediately-run/sdk';
@@ -36,7 +31,6 @@ const errText = (e: unknown): string => {
 };
 
 export default function App() {
-  const [secret, setSecret] = useState<SecretView | null>(null);
   const [grant, setGrant] = useState<SecretGrant | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -44,40 +38,21 @@ export default function App() {
 
   const say = (line: string) => setLog((l) => [...l, line]);
 
-  // 1. Ask the user to STORE an OpenRouter key (typed into host chrome).
-  const onStore = async () => {
-    setBusy('store');
-    try {
-      const view = await requestAddSecret({
-        type: 'bearer-token',
-        family: 'openrouter',
-        suggestedOrigin: 'https://openrouter.ai',
-        description: 'OpenRouter API key (BYOK demo)',
-      });
-      setSecret(view);
-      say(`stored secret ${view.id} → boundOrigin=${view.boundOrigin ?? '(none)'} (no value visible to this app)`);
-    } catch (e) {
-      say(`store failed: ${errText(e)}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // 2. Ask to GRANT (bind) the stored secret to this app (powerbox).
+  // 1. Ask the user to GRANT (bind) their stored OpenRouter secret to this app.
   const onGrant = async () => {
     setBusy('grant');
     try {
       const g = await requestSecret({ family: 'openrouter', type: 'bearer-token' });
       setGrant(g);
-      say(`granted use of ${g.secret.id} (grantId=${g.grantId}); still no value — only metadata`);
+      say(`granted use of ${g.secret.id} → boundOrigin=${g.secret.boundOrigin ?? '(none)'} (no value — only metadata)`);
     } catch (e) {
-      say(`grant failed (decline/ungranted/nonexistent are indistinguishable): ${errText(e)}`);
+      say(`grant failed (decline / no matching secret stored / ungranted are indistinguishable): ${errText(e)}`);
     } finally {
       setBusy(null);
     }
   };
 
-  // 3. CALL OpenRouter. No auth header set here — the host injects Authorization: Bearer.
+  // 2. CALL OpenRouter. No auth header set here — the host injects Authorization: Bearer.
   const onCall = async () => {
     setBusy('call');
     setReply(null);
@@ -112,7 +87,7 @@ export default function App() {
     }
   };
 
-  const btn = (active: boolean): CSSProperties => ({
+  const btnStyle = (active: boolean): CSSProperties => ({
     padding: '10px 16px',
     fontSize: 15,
     borderRadius: 8,
@@ -127,44 +102,36 @@ export default function App() {
     <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '40px auto', padding: '0 20px', lineHeight: 1.5 }}>
       <h1 style={{ marginBottom: 4 }}>BYOK OpenRouter demo</h1>
       <p style={{ color: '#666', marginTop: 0 }}>
-        Stores your OpenRouter key in the host, then calls it with the key{' '}
-        <strong>injected by the host</strong> as <code>Authorization: Bearer</code> — this app never sees its value.
+        Calls OpenRouter with your key <strong>injected by the host</strong> as{' '}
+        <code>Authorization: Bearer</code> — this app never sees its value.
       </p>
 
-      <ol style={{ paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 16, marginTop: 28 }}>
-        <li>
-          <strong>1. Store your OpenRouter key</strong>
-          <div style={{ marginTop: 6 }}>
-            <button style={btn(busy === 'store')} disabled={!!busy} onClick={onStore}>
-              {secret ? 'Stored ✓ — store another' : 'Store OpenRouter key…'}
-            </button>
-          </div>
-          {secret && (
-            <div style={{ fontSize: 13, color: '#444', marginTop: 6 }}>
-              id <code>{secret.id}</code> · type <code>{secret.type}</code> · boundOrigin{' '}
-              <code>{secret.boundOrigin ?? '—'}</code> · <em>no value field exists on this record</em>
-            </div>
-          )}
-        </li>
+      <div style={{ background: '#fffbe6', border: '1px solid #f0e0a0', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginTop: 16 }}>
+        <strong>First (once):</strong> store your OpenRouter key in{' '}
+        <strong>Settings → Secrets → Add secret</strong> — type <code>bearer-token</code>, “Send only
+        to” <code>https://openrouter.ai</code>. Apps can’t store keys, only ask to use them.
+      </div>
 
+      <ol style={{ paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 16, marginTop: 24 }}>
         <li>
-          <strong>2. Grant this app permission to use it</strong>
+          <strong>1. Grant this app permission to use it</strong>
           <div style={{ marginTop: 6 }}>
-            <button style={btn(busy === 'grant')} disabled={!!busy || !secret} onClick={onGrant}>
+            <button style={btnStyle(busy === 'grant')} disabled={!!busy} onClick={onGrant}>
               {grant ? 'Granted ✓' : 'Grant key to this app…'}
             </button>
           </div>
           {grant && (
             <div style={{ fontSize: 13, color: '#444', marginTop: 6 }}>
-              grantId <code>{grant.grantId}</code> for secret <code>{grant.secret.id}</code>
+              grantId <code>{grant.grantId}</code> for secret <code>{grant.secret.id}</code> ·
+              boundOrigin <code>{grant.secret.boundOrigin ?? '—'}</code>
             </div>
           )}
         </li>
 
         <li>
-          <strong>3. Call OpenRouter (key injected by the host)</strong>
+          <strong>2. Call OpenRouter (key injected by the host)</strong>
           <div style={{ marginTop: 6 }}>
-            <button style={btn(busy === 'call')} disabled={!!busy} onClick={onCall}>
+            <button style={btnStyle(busy === 'call')} disabled={!!busy} onClick={onCall}>
               Call openrouter.ai…
             </button>
           </div>

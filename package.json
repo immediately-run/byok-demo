@@ -3,12 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Minimal end-to-end exercise of the host-owned secret store + §6 injectSecret: store an OpenRouter key, grant it to this app, and call OpenRouter browser-direct with the key injected by the host as Authorization: Bearer (the app never sees the value).",
+  "description": "Minimal end-to-end exercise of §6 injectSecret: grant this app the OpenRouter key you stored in Settings, then call OpenRouter browser-direct with the key injected by the host as Authorization: Bearer (the app never sees the value).",
   "immediately.run": {
     "requireLatest": "stale_ok",
     "requests": {
-      "secrets:add": {},
       "net:fetch": {
+        "required": true,
         "hosts": [
           {
             "origin": "https://openrouter.ai",
