@@ -14,7 +14,7 @@
             "origin": "https://openrouter.ai",
             "paths": ["/api/v1/"],
             "methods": ["POST"],
-            "injectSecret": { "family": "openrouter", "type": "bearer-token" }
+            "injectSecret": { "type": "bearer-token" }
           }
         ]
       }

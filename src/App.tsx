@@ -42,7 +42,10 @@ export default function App() {
   const onGrant = async () => {
     setBusy('grant');
     try {
-      const g = await requestSecret({ family: 'openrouter', type: 'bearer-token' });
+      // Match by type only — the secret is already origin-bound to openrouter.ai
+      // (the real containment); no `family` required, so a key stored without a
+      // Group still matches.
+      const g = await requestSecret({ type: 'bearer-token' });
       setGrant(g);
       say(`granted use of ${g.secret.id} → boundOrigin=${g.secret.boundOrigin ?? '(none)'} (no value — only metadata)`);
     } catch (e) {
